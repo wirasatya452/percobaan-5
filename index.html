@@ -1,0 +1,1933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IBUKU · Bamboo Building Classification & Roadmap</title>
+  <meta name="description" content="Documentation of IBUKU bamboo buildings — 150+ projects from 2005 to present, classified by structure type and mapped across Bali and beyond." />
+  <!-- React + ReactDOM + Babel (standalone) -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body { background: #f5f0e6; }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #ede7db; }
+    ::-webkit-scrollbar-thumb { background: #c5a04e55; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #c5a04e; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script>
+    // ── window.storage polyfill using localStorage ──
+    // Replaces Claude artifact storage API with browser localStorage
+    window.storage = {
+      get: async function(key, shared) {
+        try {
+          const val = localStorage.getItem('ibuku__' + key);
+          if (val === null) throw new Error('Key not found');
+          return { key, value: val, shared: !!shared };
+        } catch(e) { throw e; }
+      },
+      set: async function(key, value, shared) {
+        try {
+          localStorage.setItem('ibuku__' + key, value);
+          return { key, value, shared: !!shared };
+        } catch(e) { return null; }
+      },
+      delete: async function(key, shared) {
+        localStorage.removeItem('ibuku__' + key);
+        return { key, deleted: true, shared: !!shared };
+      },
+      list: async function(prefix, shared) {
+        const keys = Object.keys(localStorage)
+          .filter(k => k.startsWith('ibuku__' + (prefix || '')))
+          .map(k => k.replace('ibuku__', ''));
+        return { keys, prefix, shared: !!shared };
+      }
+    };
+  </script>
+
+  <script type="text/babel">
+    const { useState, useRef, useEffect } = React;
+
+
+/* ─── IBUKU PALETTE ─── */
+const C = {
+  bg: "#f5f0e6", bgWarm: "#ede7db", bgCard: "#faf7f0",
+  bgDark: "#3b3425", bgPlum: "#4a2f3b",
+  gold: "#c5a04e", goldLight: "#d4b96c", goldDark: "#9e7d30",
+  olive: "#5c5335",
+  textDark: "#2e2a22", textMid: "#6b6355", textMuted: "#a09882", textOnDark: "#f5f0e6",
+  border: "#ddd5c5", borderLight: "#e8e1d3",
+};
+
+/* ─── LOCATION DATA (Bali compounds + known areas) ─── */
+const LOCATIONS = {
+  "GS.": { name: "Green School", lat: -8.5593, lng: 115.3956, desc: "Sibang Kaja, Abiansemal" },
+  "GV.": { name: "Green Village", lat: -8.5575, lng: 115.3930, desc: "Sibang Kaja, Abiansemal" },
+  "BI.": { name: "Bambu Indah", lat: -8.5041, lng: 115.2835, desc: "Sayan, Ubud" },
+  "GC.": { name: "Green Camp", lat: -8.5610, lng: 115.3970, desc: "Sibang Kaja, Abiansemal" },
+  "PTBP": { name: "PT Bamboo Pure", lat: -8.5550, lng: 115.3900, desc: "Abiansemal area" },
+  "Ubud, Bali": { name: "Ubud", lat: -8.5069, lng: 115.2625, desc: "Ubud area" },
+  "Denpasar, Bali": { name: "Denpasar", lat: -8.6500, lng: 115.2167, desc: "Denpasar" },
+  "Canggu, Bali": { name: "Canggu", lat: -8.6478, lng: 115.1385, desc: "Canggu" },
+  "Seminyak area": { name: "Seminyak area", lat: -8.6900, lng: 115.1680, desc: "Seminyak / Kerobokan / Umalas" },
+  "South Bali": { name: "South Bali", lat: -8.7900, lng: 115.1700, desc: "Ungasan / Bingin / Nyanyi" },
+  "Sidemen, Bali": { name: "Sidemen", lat: -8.4700, lng: 115.5000, desc: "Sidemen, Karangasem" },
+  "Amed, Bali": { name: "Amed", lat: -8.3500, lng: 115.6500, desc: "Amed, Karangasem" },
+  "East Bali": { name: "East Bali", lat: -8.4500, lng: 115.5800, desc: "Candidasa / Amlapura / Manggis" },
+  "Nusa Penida": { name: "Nusa Penida", lat: -8.7300, lng: 115.5400, desc: "Nusa Penida island" },
+  "Tampaksiring, Bali": { name: "Tampaksiring", lat: -8.4150, lng: 115.3150, desc: "Tampaksiring, Gianyar" },
+  "Kintamani, Bali": { name: "Kintamani", lat: -8.2800, lng: 115.3700, desc: "Kintamani, Bangli" },
+  "Payangan, Bali": { name: "Payangan", lat: -8.4200, lng: 115.2800, desc: "Payangan, Gianyar" },
+  "North Bali": { name: "North Bali", lat: -8.2500, lng: 115.2000, desc: "Munduk / Buleleng" },
+  "_OTHER_BALI": { name: "Other Bali", lat: -8.5200, lng: 115.4200, desc: "Various locations, Bali" },
+  "_INTERNATIONAL": { name: "International", lat: null, lng: null, desc: "Outside Bali" },
+};
+
+/* ─── BALI REGENCY SVG PATHS ─── */
+const BALI_REGENCIES = [
+  { name: "Buleleng", path: "M 213.1,431.2 L 272.0,475.6 L 340.0,488.3 L 430.7,501.0 L 521.3,488.3 L 612.0,462.9 L 634.7,399.5 L 621.1,348.8 L 566.7,336.1 L 498.7,329.8 L 430.7,317.1 L 362.7,323.4 L 294.7,336.1 L 249.3,361.5 L 226.7,399.5 Z" },
+  { name: "Jembrana", path: "M 36.3,361.5 L 77.1,412.2 L 122.4,431.2 L 213.1,431.2 L 226.7,399.5 L 249.3,361.5 L 240.3,317.1 L 213.1,272.7 L 167.7,222.0 L 104.3,209.3 L 45.3,234.6 L 13.6,285.4 L 22.7,336.1 Z" },
+  { name: "Tabanan", path: "M 249.3,361.5 L 294.7,336.1 L 362.7,323.4 L 385.3,298.0 L 394.4,253.7 L 376.3,209.3 L 349.1,171.2 L 317.3,145.9 L 272.0,158.5 L 240.3,190.2 L 213.1,222.0 L 213.1,272.7 L 240.3,317.1 Z" },
+  { name: "Badung", path: "M 362.7,323.4 L 394.4,317.1 L 408.0,298.0 L 408.0,222.0 L 394.4,171.2 L 385.3,82.4 L 367.2,19.0 L 340.0,19.0 L 317.3,63.4 L 317.3,145.9 L 349.1,171.2 L 376.3,209.3 L 394.4,253.7 L 385.3,298.0 Z" },
+  { name: "Denpasar", path: "M 408.0,298.0 L 430.7,317.1 L 439.7,285.4 L 439.7,190.2 L 430.7,145.9 L 408.0,82.4 L 394.4,82.4 L 385.3,82.4 L 394.4,171.2 L 408.0,222.0 Z" },
+  { name: "Gianyar", path: "M 430.7,317.1 L 498.7,329.8 L 512.3,317.1 L 512.3,272.7 L 498.7,209.3 L 485.1,171.2 L 466.9,145.9 L 439.7,145.9 L 430.7,145.9 L 439.7,190.2 L 439.7,285.4 Z" },
+  { name: "Bangli", path: "M 394.4,317.1 L 430.7,317.1 L 439.7,285.4 L 439.7,190.2 L 430.7,234.6 L 421.6,272.7 L 408.0,298.0 Z" },
+  { name: "Klungkung", path: "M 466.9,145.9 L 485.1,171.2 L 512.3,190.2 L 530.4,190.2 L 544.0,171.2 L 530.4,126.8 L 512.3,95.1 L 485.1,95.1 L 466.9,126.8 Z" },
+  { name: "Karangasem", path: "M 498.7,329.8 L 566.7,336.1 L 621.1,348.8 L 634.7,399.5 L 648.3,348.8 L 657.3,285.4 L 648.3,222.0 L 621.1,190.2 L 589.3,171.2 L 544.0,171.2 L 530.4,190.2 L 512.3,190.2 L 512.3,272.7 L 512.3,317.1 Z" },
+];
+
+function getProjectLocation(p) {
+  // If project has explicit location data, use it
+  if (p.location) {
+    const loc = p.location.toLowerCase();
+    if (loc.includes("ubud")) return "Ubud, Bali";
+    if (loc.includes("denpasar")) return "Denpasar, Bali";
+    if (loc.includes("canggu")) return "Canggu, Bali";
+    if (loc.includes("seminyak") || loc.includes("kerobokan") || loc.includes("umalas")) return "Seminyak area";
+    if (loc.includes("sidemen")) return "Sidemen, Bali";
+    if (loc.includes("amed")) return "Amed, Bali";
+    if (loc.includes("nusa penida")) return "Nusa Penida";
+    if (loc.includes("tampaksiring")) return "Tampaksiring, Bali";
+    if (loc.includes("kintamani")) return "Kintamani, Bali";
+    if (loc.includes("candidasa") || loc.includes("amlapura") || loc.includes("sengkidu") || loc.includes("manggis")) return "East Bali";
+    if (loc.includes("payangan")) return "Payangan, Bali";
+    if (loc.includes("gianyar") || loc.includes("batubulan")) return "_OTHER_BALI";
+    if (loc.includes("ungasan") || loc.includes("bingin") || loc.includes("nyanyi")) return "South Bali";
+    if (loc.includes("selemadeg")) return "_OTHER_BALI";
+    if (loc.includes("munduk")) return "North Bali";
+    if (loc.includes("badung")) return "_OTHER_BALI";
+    if (loc.includes("bali")) return "_OTHER_BALI";
+    return "_OTHER_BALI";
+  }
+  // Fall back to name prefix for IBUKU compounds
+  const name = p.name;
+  if (name.startsWith("GS.") || name.startsWith("GS,")) return "GS.";
+  if (name.startsWith("GV.") || name.startsWith("GV,") || name.startsWith("GV ")) return "GV.";
+  if (name.startsWith("BI.")) return "BI.";
+  if (name.startsWith("GC.")) return "GC.";
+  if (name.startsWith("PTBP")) return "PTBP";
+  const intl = ["RESTAURANT_SAO TOME","MALDIVE BEACH BAR","SUMBA HOSPITALITY FOUNDATION",
+    "NAARA BOCAS DEL TORO PANAMA TREE HOUSE","MALOKA TIERRAMOR","KAWAY'AN ECO FARM",
+    "DHARMA SHANTI 4 SEASON","AREA 15"];
+  if (intl.includes(name)) return "_INTERNATIONAL";
+  return "_OTHER_BALI";
+}
+
+/* ─── PROJECT DATA ─── */
+const PROJECTS = [
+  { year: "2005", name: "THREE MOUNTAIN", classification: "RECIPROCAL TOWER", location: "BADUNG", designer: "IBUKU" },
+  { year: "2005", name: "KAPAL BAMBU", classification: "GRIDSHEEL", location: "BADUNG", designer: "IBUKU" },
+  { year: "2006", name: "LONG BARN", classification: "POST AND BEAM (TRADITIONAL HOUSE)", location: "GIANYAR", designer: "IBUKU" },
+  { year: "2006", name: "MINANG HOUSE", classification: "POST AND BEAM (TRADITIONAL HOUSE)", location: "", designer: "IBUKU" },
+  { year: "2006", name: "IBU ROBIN HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2007", name: "MINANG BRIDGE", classification: "POST AND BEAM (TRADITIONAL HOUSE)", location: "", designer: "IBUKU" },
+  { year: "2008", name: "ALDO'S KITCHEN", classification: "RECIPROCAL TOWER", location: "", designer: "IBUKU" },
+  { year: "2008", name: "GS. CLASSROOM 1", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2008", name: "GS. CLASSROOM 2", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2008", name: "GS. CLASSROOM 3", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2008", name: "GS. CLASSROOM 4", classification: "ARCHES", location: "", designer: "IBUKU" },
+  { year: "2008", name: "GS. DIRECTOR HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2008", name: "GS. KINDER GARTEN", classification: "RECIPROCAL TOWER", location: "", designer: "IBUKU" },
+  { year: "2008", name: "GS. KINDER PERMACULTURE", classification: "RECIPROCAL TOWER", location: "", designer: "IBUKU" },
+  { year: "2008", name: "GS. PRE K", classification: "RECIPROCAL TOWER", location: "", designer: "IBUKU" },
+  { year: "2008", name: "GS. SANGKEP", classification: "ARCHES", location: "", designer: "IBUKU" },
+  { year: "2008", name: "GS. SANGKEP CHANGING ROOM", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2008", name: "GS. TEACHER HOUSE 1", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2008", name: "GS. TEACHER HOUSE 2", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2008", name: "GS. TEACHER HOUSE 3", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2008", name: "ORIN'S HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2008", name: "WAVE HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2009", name: "GC. YURT", classification: "RECIPROCAL TOWER", location: "", designer: "IBUKU" },
+  { year: "2009", name: "GS. CLASSROOM 5", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2009", name: "GS. CLASSROOM 6", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2009", name: "GS. GYM", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2009", name: "GS. HEART OF SCHOOL", classification: "RECIPROCAL TOWER", location: "", designer: "IBUKU" },
+  { year: "2009", name: "GS. PRINCIPLES OFFICE", classification: "POST AND BEAM (TRADITIONAL HOUSE)", location: "", designer: "IBUKU" },
+  { year: "2009", name: "PAUL LUCIW HOUSE", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2009", name: "ROSS GUEST HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2010", name: "ELORA'S YURT", classification: "RECIPROCAL TOWER", location: "", designer: "IBUKU" },
+  { year: "2010", name: "GV, PALM HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2010", name: "TANDUK HOUSE", classification: "POST AND BEAM (TRADITIONAL HOUSE)", location: "", designer: "IBUKU" },
+  { year: "2011", name: "BALE SUBAK", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2011", name: "GV. GARDEN HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2011", name: "GV. RIVER HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2011", name: "GV. SUNRISE HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2011", name: "GV. TEMPLE HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2011", name: "GV. TOWER HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2011", name: "PEMULUNG HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2012", name: "BI. SUMBA HOUSE", classification: "POST AND BEAM (TRADITIONAL HOUSE)", location: "", designer: "IBUKU" },
+  { year: "2012", name: "BASKET HOSUE", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2012", name: "GS. ATM", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2012", name: "GS. BATTERY HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2012", name: "GS. MIDDLE CLASSROOM", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2012", name: "GS. MOSAIC YURT", classification: "RECIPROCAL TOWER", location: "", designer: "IBUKU" },
+  { year: "2012", name: "GS. PRIMARY CLASSROOM", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2012", name: "GS. TURTLE CLASSROOM", classification: "ARCHES", location: "", designer: "IBUKU" },
+  { year: "2012", name: "GV. GARAGE", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2012", name: "GV. KELAPA HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2012", name: "OCTAGONAL YURT", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2013", name: "BI. DAPOER", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2013", name: "GC. STAR LODGE", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2013", name: "GS, MUSIC CLASSROOM", classification: "ARCHES", location: "", designer: "IBUKU" },
+  { year: "2013", name: "PADANG PADANG SURF LODGE", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2013", name: "PIKA BALE", classification: "POST AND BEAM (TRADITIONAL HOUSE)", location: "", designer: "IBUKU" },
+  { year: "2013", name: "GV SHARMA SPRINGS", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2013", name: "TRHEE MONTAIN (RECONSTRUCTION)", classification: "RECIPROCAL TOWER", location: "", designer: "IBUKU" },
+  { year: "2013", name: "VILLA  SHANTI", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2014", name: "BI. BANYAN HOUSE", classification: "POST AND BEAM (TRADITIONAL HOUSE)", location: "", designer: "IBUKU" },
+  { year: "2014", name: "BI. POJOK HOUSE", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2014", name: "GS. JUNGLE GYM", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2014", name: "GS. KITCHEN", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2014", name: "MARK BALE", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2014", name: "PERMATA AYUNG SPA", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2015", name: "DHARMA SHANTI 4 SEASON", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2015", name: "GS. ELEMENTARY CLASSROOM", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2015", name: "GS. MEDITATION BUILDING", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2015", name: "GV. ANANDA HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2015", name: "GV. LEAF HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2015", name: "GV. PONDOK", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2015", name: "JOGLO HOUSE", classification: "POST AND BEAM (TRADITIONAL HOUSE)", location: "", designer: "IBUKU" },
+  { year: "2016", name: "BI. COPPER HOSUE", classification: "GRIDSHEEL", location: "", designer: "IBUKU" },
+  { year: "2016", name: "GC. TWIN  YURT", classification: "RECIPROCAL TOWER", location: "", designer: "IBUKU" },
+  { year: "2016", name: "CACAO HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2016", name: "KURA KURA BADMINTON", classification: "ARCHES", location: "", designer: "IBUKU" },
+  { year: "2016", name: "PTBP SECURITY POST", classification: "POST AND BEAM (TRADITIONAL HOUSE)", location: "", designer: "IBUKU" },
+  { year: "2016", name: "SUMBA HOSPITALITY FOUNDATION", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2017", name: "RESTAURANT_SAO TOME", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2017", name: "BI. RIVER WARUNG", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2017", name: "BI. MOON HOUSE", classification: "GRIDSHEEL", location: "", designer: "IBUKU" },
+  { year: "2017", name: "GS. GRADE 2 CLASSROOM (REBUILD)", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2017", name: "GV. HARMONY HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2017", name: "MALDIVE BEACH BAR", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2017", name: "GV. SHARMA SPRINGS YOGA PAVILION", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2017", name: "SOKASI COOKING CLASS", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2018", name: "BI. RIVER BEND", classification: "GRIDSHEEL", location: "", designer: "IBUKU" },
+  { year: "2018", name: "GS. ENERGY HUB", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2018", name: "GS. INOVATION HUB", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2018", name: "GS. POP UP COFFEE SHOP", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2018", name: "GS. SIENCE LAB", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2018", name: "GV. AURA HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2018", name: "GV. ECLIPSE MAIN HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2018", name: "KASIA HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2018", name: "NAGA HOUSE", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2018", name: "PTBP VISITOR CENTER", classification: "GRIDSHEEL", location: "", designer: "IBUKU" },
+  { year: "2019", name: "AREA 15", classification: "RECIPROCAL TOWER", location: "", designer: "IBUKU" },
+  { year: "2019", name: "GS. SANGKEP (REBUILD)", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2019", name: "BALE YOGA NIRJAHARA", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2020", name: "BI. RIVERSIDE", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2020", name: "GC. ACTIVITY CENTER", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2020", name: "GS. UPPER SCHOOL DRAMA SPACE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2020", name: "GV. ECO MAIN  HOUSE", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2020", name: "GV. ECLIPSE EXTENSION", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2021", name: "BI. THREE HOUSE", classification: "GRIDSHEEL", location: "", designer: "IBUKU" },
+  { year: "2021", name: "GS. THE ARC", classification: "GRIDSHEEL", location: "", designer: "IBUKU" },
+  { year: "2021", name: "OM HOUSE", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2021", name: "TILEM DOME ALCHEMY YOGA CENTER", classification: "ARCHES", location: "", designer: "IBUKU" },
+  { year: "2021", name: "VILLA TAMAN", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2022", name: "BUAHAN", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2022", name: "COVE PAVILION", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2022", name: "MARI BEACH CLUB", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2022", name: "UMA JIWA", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2023", name: "BALE MEGA SERGI", classification: "ARCHES", location: "", designer: "IBUKU" },
+  { year: "2023", name: "BAMBOO BEACH CLUB BY AMANTARA", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2023", name: "LUMI SHALA", classification: "GRIDSHEEL", location: "", designer: "IBUKU" },
+  { year: "2023", name: "NAARA BOCAS DEL TORO PANAMA TREE HOUSE", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2023", name: "BI. RIVER WARUNG EXTENSION", classification: "GRIDSHEEL", location: "", designer: "IBUKU" },
+  { year: "2023", name: "BI. SUNSET BAR", classification: "ARCHES", location: "", designer: "IBUKU" },
+  { year: "2024", name: "ALCHEMY ULUWATU", classification: "ARCHES", location: "", designer: "IBUKU" },
+  { year: "2024", name: "BI. BOUTIQUE", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2024", name: "BI. LITTLE HOUSE", classification: "GRIDSHEEL", location: "", designer: "IBUKU" },
+  { year: "2024", name: "BI. NEW MOON", classification: "GRIDSHEEL", location: "", designer: "IBUKU" },
+  { year: "2025", name: "ALHEMY RESTAURANT", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2025", name: "BI. WEDDING RESTAURANT", classification: "GRIDSHEEL", location: "", designer: "IBUKU" },
+  { year: "2025", name: "GREEN CAMP AT AYANA", classification: "ARCHES", location: "", designer: "IBUKU" },
+  { year: "2025", name: "KAWAY'AN ECO FARM", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2025", name: "MALOKA TIERRAMOR", classification: "POST AND BEAM (NORMAL)", location: "", designer: "IBUKU" },
+  { year: "2025", name: "SURI RESIDENT FAMILY HOME", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "ON GOING", name: "FALLOWS RECIDENT BLUMBUNGAN", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "", designer: "IBUKU" },
+  { year: "2024", name: "Kilig Restaurant", classification: "POST AND BEAM (NORMAL)", location: "Ubud, Bali", designer: "AsaliBali" },
+  { year: "2024", name: "Belalu Dome", classification: "ARCHES", location: "Ubud, Bali", designer: "AsaliBali" },
+  { year: "2024", name: "Belalu Cobra", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "Ubud, Bali", designer: "AsaliBali" },
+  { year: "2023", name: "Casa Koko", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "Pejeng, Bali", designer: "AsaliBali" },
+  { year: "2023", name: "Begawan Biji", classification: "POST AND BEAM (NORMAL)", location: "Payangan, Bali", designer: "AsaliBali" },
+  { year: "2023", name: "Villa Tong Bashir", classification: "POST AND BEAM (NORMAL)", location: "Ubud, Bali", designer: "AsaliBali" },
+  { year: "2023", name: "Villa Dureau", classification: "POST AND BEAM (NORMAL)", location: "Ubud, Bali", designer: "AsaliBali" },
+  { year: "2023", name: "Fresh Fins Divers", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "Amed, Bali", designer: "AsaliBali" },
+  { year: "2023", name: "Pro Ed School", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "Nyanyi, Bali", designer: "AsaliBali" },
+  { year: "2023", name: "Kaura", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "Manggis, Bali", designer: "AsaliBali" },
+  { year: "2023", name: "Roundhouse", classification: "ARCHES", location: "Sidemen, Bali", designer: "AsaliBali" },
+  { year: "2023", name: "Treehouse", classification: "ARCHES", location: "Sibetan, Bali", designer: "AsaliBali" },
+  { year: "2022", name: "Bali Cliff Glamping", classification: "POST AND BEAM (NORMAL)", location: "Amlapura, Bali", designer: "AsaliBali" },
+  { year: "2022", name: "Bali Airport", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "Denpasar, Bali", designer: "AsaliBali" },
+  { year: "2022", name: "Bandido Guest House", classification: "ARCHES", location: "Bingin, Bali", designer: "AsaliBali" },
+  { year: "2022", name: "Beluna", classification: "POST AND BEAM (NORMAL)", location: "Ubud, Bali", designer: "AsaliBali" },
+  { year: "2022", name: "Kappa Sense Ubud", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "Ubud, Bali", designer: "AsaliBali" },
+  { year: "2021", name: "Asali Bali (Bale)", classification: "ARCHES", location: "Gianyar, Bali", designer: "AsaliBali" },
+  { year: "2021", name: "Ayo Tents", classification: "POST AND BEAM (NORMAL)", location: "Ungasan, Bali", designer: "AsaliBali" },
+  { year: "2021", name: "Kiavik Villa", classification: "ARCHES", location: "Sidemen, Bali", designer: "AsaliBali" },
+  { year: "2021", name: "The Seed", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "Candidasa, Bali", designer: "AsaliBali" },
+  { year: "2021", name: "Zaitun Villa", classification: "POST AND BEAM (NORMAL)", location: "Petulu, Bali", designer: "AsaliBali" },
+  { year: "2020", name: "Arjava Tirta Vilagna", classification: "POST AND BEAM (NORMAL)", location: "Kintamani, Bali", designer: "AsaliBali" },
+  { year: "2020", name: "Bamboo Turtle Ecolodge", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "Lodtunduh, Bali", designer: "AsaliBali" },
+  { year: "2020", name: "Coconest", classification: "ARCHES", location: "Tampaksiring, Bali", designer: "AsaliBali" },
+  { year: "2020", name: "Nusava Eco", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "Nusa Penida, Bali", designer: "AsaliBali" },
+  { year: "2020", name: "Villa Azim", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "Ubud, Bali", designer: "AsaliBali" },
+  { year: "2020", name: "Reeflex Divers", classification: "ARCHES", location: "Nusa Penida, Bali", designer: "AsaliBali" },
+  { year: "2020", name: "Tea House", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "Ubud, Bali", designer: "AsaliBali" },
+  { year: "2020", name: "The Nyx", classification: "POST AND BEAM (NORMAL)", location: "Tampaksiring, Bali", designer: "AsaliBali" },
+  { year: "2020", name: "Umani", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "Kerobokan, Bali", designer: "AsaliBali" },
+  { year: "2019", name: "Cayot Villa", classification: "POST AND BEAM (NORMAL)", location: "Sangketan, Bali", designer: "AsaliBali" },
+  { year: "2019", name: "K Club Ubud", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "Tegallalang, Bali", designer: "AsaliBali" },
+  { year: "2019", name: "Meditation Retreat", classification: "POST AND BEAM (NORMAL)", location: "Sangketan, Bali", designer: "AsaliBali" },
+  { year: "2018", name: "Dharma Oasis", classification: "ARCHES", location: "Selemadeg, Bali", designer: "AsaliBali" },
+  { year: "2018", name: "Ekommunity", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "Munduk, Bali", designer: "AsaliBali" },
+  { year: "2017", name: "Tripper Nature", classification: "POST AND BEAM (NORMAL)", location: "Batubulan, Bali", designer: "AsaliBali" },
+  { year: "2014", name: "Sunrise School", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "Kerobokan, Bali", designer: "AsaliBali" },
+  { year: "2012", name: "Taman Mesari", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "Seminyak, Bali", designer: "AsaliBali" },
+  { year: "2012", name: "Villa Annabelle Umalas", classification: "POST AND BEAM (NORMAL)", location: "Umalas, Bali", designer: "Inspiral Studio" },
+  { year: "2012", name: "Zenergy", classification: "ARCHES", location: "Sengkidu, Bali", designer: "Inspiral Studio" },
+  { year: "2012", name: "The Cove Bali", classification: "POST AND BEAM (TRADITIONAL HOUSE)", location: "Antap, Bali", designer: "Inspiral Studio" },
+  { year: "2012", name: "The Practice Yoga", classification: "POST AND BEAM (RIDGE AND RAFTER)", location: "Canggu, Bali", designer: "Inspiral Studio" },
+];
+
+const YEARS = [...new Set(PROJECTS.map(p => p.year))];
+const DESIGNERS = [...new Set(PROJECTS.map(p => p.designer))].sort();
+
+const STRUCTURE_CATEGORIES = [
+  { key: "ARCHES", label: "Arches", color: "#8b6b2e" },
+  { key: "GRIDSHEEL", label: "Gridsheel", color: "#5c7a4a" },
+  { key: "RECIPROCAL TOWER", label: "Reciprocal Tower", color: "#c5a04e" },
+  { key: "POST AND BEAM (RIDGE AND RAFTER)", label: "Ridge & Rafter", color: "#7a5c3a", parent: "POST AND BEAM" },
+  { key: "POST AND BEAM (TRADITIONAL HOUSE)", label: "Traditional House", color: "#6b5d4a", parent: "POST AND BEAM" },
+  { key: "POST AND BEAM (NORMAL)", label: "Normal P&B", color: "#5a6e48", parent: "POST AND BEAM" },
+];
+
+function classShortLabel(cls) {
+  return STRUCTURE_CATEGORIES.find(c => c.key === cls)?.label || cls;
+}
+function catColor(cls) {
+  return STRUCTURE_CATEGORIES.find(c => c.key === cls)?.color || "#888";
+}
+
+/* ─── PROJECT CARD ─── */
+function ProjectCard({ project, isHighlighted, onHover, onLeave, onClick }) {
+  const accent = catColor(project.classification);
+  return (
+    <div onMouseEnter={onHover} onMouseLeave={onLeave} onClick={onClick}
+      style={{
+        background: isHighlighted ? C.bgCard : "transparent",
+        border: `1px solid ${isHighlighted ? C.border : "transparent"}`,
+        borderLeft: `3px solid ${isHighlighted ? accent : C.border}`,
+        borderRadius: 10, padding: "6px 12px", cursor: "pointer",
+        transition: "all 0.3s cubic-bezier(0.4,0,0.2,1)",
+        transform: isHighlighted ? "translateX(4px)" : "translateX(0)",
+        boxShadow: isHighlighted ? "0 2px 12px rgba(0,0,0,0.06)" : "none",
+        minWidth: 0,
+      }}>
+      <div style={{ fontSize: 12, fontWeight: 500, color: isHighlighted ? C.textDark : C.textMid,
+        letterSpacing: "0.04em", lineHeight: 1.4, whiteSpace: "nowrap", overflow: "hidden",
+        textOverflow: "ellipsis", fontFamily: "'DM Sans', sans-serif" }}>
+        {project.name}
+      </div>
+      <div style={{ fontSize: 9, color: isHighlighted ? accent : C.textMuted, marginTop: 1,
+        letterSpacing: "0.08em", textTransform: "uppercase" }}>
+        {classShortLabel(project.classification)} · {project.year}
+      </div>
+    </div>
+  );
+}
+
+/* ─── MODAL ─── */
+function ProjectDetail({ project, onClose }) {
+  const [animIn, setAnimIn] = useState(false);
+  useEffect(() => { requestAnimationFrame(() => requestAnimationFrame(() => setAnimIn(true))); }, []);
+  if (!project) return null;
+  const accent = catColor(project.classification);
+  const loc = LOCATIONS[getProjectLocation(project)];
+  const handleClose = () => { setAnimIn(false); setTimeout(onClose, 280); };
+
+  return (
+    <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+      background: animIn ? "rgba(59,52,37,0.45)" : "rgba(59,52,37,0)", zIndex: 1000,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      backdropFilter: animIn ? "blur(6px)" : "blur(0px)",
+      transition: "background 0.3s ease, backdrop-filter 0.3s ease",
+    }} onClick={handleClose}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: C.bgCard, borderRadius: 14, padding: "44px 48px", maxWidth: 440, width: "90%",
+        boxShadow: "0 32px 80px rgba(59,52,37,0.2)", position: "relative",
+        borderLeft: `4px solid ${accent}`,
+        opacity: animIn ? 1 : 0,
+        transform: animIn ? "translateY(0) scale(1)" : "translateY(24px) scale(0.96)",
+        transition: "opacity 0.3s cubic-bezier(0.4,0,0.2,1), transform 0.35s cubic-bezier(0.4,0,0.2,1)",
+      }}>
+        <button onClick={handleClose} style={{ position: "absolute", top: 16, right: 20,
+          background: "none", border: "none", fontSize: 20, cursor: "pointer", color: C.textMuted }}>×</button>
+        <div style={{ fontSize: 11, color: C.gold, fontWeight: 500, letterSpacing: "0.18em",
+          textTransform: "uppercase", marginBottom: 12 }}>{project.year}</div>
+        <h2 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 30, fontWeight: 400,
+          color: C.textDark, margin: "0 0 16px", lineHeight: 1.15 }}>{project.name}</h2>
+        <div style={{ borderLeft: `3px solid ${accent}`, paddingLeft: 14, fontSize: 13,
+          color: accent, fontWeight: 500, marginBottom: 12 }}>{classShortLabel(project.classification)}</div>
+        <div style={{ fontSize: 12, color: C.textMid, marginBottom: 6 }}>
+          Designer: <span style={{ color: C.textDark }}>{project.designer}</span>
+        </div>
+        {loc && <div style={{ fontSize: 12, color: C.textMid }}>
+          Location: <span style={{ color: C.textDark }}>{loc.name}</span>
+          <span style={{ color: C.textMuted }}> — {loc.desc}</span>
+        </div>}
+      </div>
+    </div>
+  );
+}
+
+/* ─── VIEW 1: ROADMAP ─── */
+function RoadmapView({ onSelect }) {
+  const [hoveredIdx, setHoveredIdx] = useState(null);
+  return (
+    <div style={{ padding: "0 32px 48px", maxWidth: 1100, margin: "0 auto" }}>
+      {YEARS.map(year => {
+        const projects = PROJECTS.filter(p => p.year === year);
+        return (
+          <div key={year}>
+            <div style={{ display: "flex", alignItems: "flex-start" }}>
+              <div style={{ width: 88, minWidth: 88, fontFamily: "'Cormorant Garamond', Georgia, serif",
+                fontSize: 24, fontWeight: 400, color: C.gold, paddingTop: 12,
+                position: "sticky", left: 0, zIndex: 2, background: C.bg }}>{year}</div>
+              <div style={{ flex: 1, display: "flex", flexWrap: "wrap", gap: 4,
+                paddingTop: 8, paddingBottom: 14, borderBottom: `1px solid ${C.borderLight}` }}>
+                {projects.map(p => {
+                  const i = PROJECTS.indexOf(p);
+                  return <ProjectCard key={i} project={p} isHighlighted={hoveredIdx===i}
+                    onHover={()=>setHoveredIdx(i)} onLeave={()=>setHoveredIdx(null)} onClick={()=>onSelect(p)} />;
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─── VIEW 2: STRUCTURE GRID ─── */
+function StructureView({ onSelect }) {
+  const [hoveredIdx, setHoveredIdx] = useState(null);
+  const [filterCat, setFilterCat] = useState(null);
+  const filteredYears = filterCat ? YEARS.filter(y => PROJECTS.some(p => p.year===y && p.classification===filterCat)) : YEARS;
+
+  return (
+    <div style={{ padding: "0 32px 48px", maxWidth: 1100, margin: "0 auto" }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 28, justifyContent: "center" }}>
+        <PillBtn active={!filterCat} color={C.gold} onClick={()=>setFilterCat(null)}>All ({PROJECTS.length})</PillBtn>
+        {STRUCTURE_CATEGORIES.map(cat => {
+          const count = PROJECTS.filter(p => p.classification===cat.key).length;
+          return <PillBtn key={cat.key} active={filterCat===cat.key} color={cat.color}
+            onClick={()=>setFilterCat(filterCat===cat.key ? null : cat.key)}>{cat.label} ({count})</PillBtn>;
+        })}
+      </div>
+      <div style={{ overflowX: "auto" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+          <thead><tr>
+            <th style={{ width: 76, minWidth: 76, position: "sticky", left: 0, zIndex: 3,
+              background: C.bg, padding: "10px 4px", borderBottom: `2px solid ${C.border}`,
+              fontSize: 9, color: C.textMuted, letterSpacing: "0.15em", textTransform: "uppercase" }}>Year</th>
+            {(filterCat ? STRUCTURE_CATEGORIES.filter(c=>c.key===filterCat) : STRUCTURE_CATEGORIES).map(cat => (
+              <th key={cat.key} style={{ padding: "10px 6px", borderBottom: `2px solid ${cat.color}40`,
+                fontSize: 9, fontWeight: 600, color: cat.color, textAlign: "center",
+                letterSpacing: "0.1em", textTransform: "uppercase" }}>{cat.label}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {filteredYears.map(year => {
+              const cats = filterCat ? STRUCTURE_CATEGORIES.filter(c=>c.key===filterCat) : STRUCTURE_CATEGORIES;
+              return (
+                <tr key={year}>
+                  <td style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 17, fontWeight: 400,
+                    color: C.gold, padding: "10px 4px", position: "sticky", left: 0, zIndex: 2, background: C.bg,
+                    borderBottom: `1px solid ${C.borderLight}`, verticalAlign: "top" }}>{year}</td>
+                  {cats.map(cat => {
+                    const cp = PROJECTS.filter(p => p.year===year && p.classification===cat.key);
+                    return <td key={cat.key} style={{ padding: "8px 4px", borderBottom: `1px solid ${C.borderLight}`, verticalAlign: "top" }}>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                        {cp.map(p => { const gi = PROJECTS.indexOf(p); return <ProjectCard key={gi} project={p}
+                          isHighlighted={hoveredIdx===gi} onHover={()=>setHoveredIdx(gi)}
+                          onLeave={()=>setHoveredIdx(null)} onClick={()=>onSelect(p)} />; })}
+                      </div>
+                    </td>;
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ─── VIEW 3: BY DESIGNER ─── */
+function DesignerView({ onSelect }) {
+  const [hoveredIdx, setHoveredIdx] = useState(null);
+  const [expandedDesigner, setExpandedDesigner] = useState(null);
+
+  const designerGroups = DESIGNERS.map(d => ({
+    designer: d,
+    projects: PROJECTS.filter(p => p.designer === d).sort((a,b) => (a.year > b.year ? 1 : -1)),
+  }));
+
+  return (
+    <div style={{ padding: "0 32px 48px", maxWidth: 900, margin: "0 auto" }}>
+      <div style={{ textAlign: "center", marginBottom: 28 }}>
+        <div style={{ fontSize: 12, color: C.textMuted, fontStyle: "italic" }}>
+          Designer names are placeholders — update the data to see them grouped here
+        </div>
+      </div>
+      {designerGroups.map(({ designer, projects }) => {
+        const isExpanded = expandedDesigner === designer || designerGroups.length === 1;
+        return (
+          <div key={designer} style={{ marginBottom: 8 }}>
+            <button onClick={() => setExpandedDesigner(isExpanded ? null : designer)}
+              style={{
+                width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "16px 20px", background: isExpanded ? C.bgCard : "transparent",
+                border: `1px solid ${isExpanded ? C.border : C.borderLight}`,
+                borderRadius: 10, cursor: "pointer", transition: "all 0.25s",
+                fontFamily: "'DM Sans', sans-serif",
+              }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
+                <span style={{ fontFamily: "'Cormorant Garamond', Georgia, serif",
+                  fontSize: 22, fontWeight: 400, color: C.textDark }}>{designer}</span>
+                <span style={{ fontSize: 12, color: C.gold, fontWeight: 600 }}>{projects.length} projects</span>
+              </div>
+              <span style={{ fontSize: 18, color: C.textMuted,
+                transform: isExpanded ? "rotate(180deg)" : "rotate(0)",
+                transition: "transform 0.3s ease", display: "inline-block" }}>▾</span>
+            </button>
+            <div style={{
+              maxHeight: isExpanded ? 2000 : 0,
+              overflow: "hidden",
+              transition: "max-height 0.5s cubic-bezier(0.4,0,0.2,1)",
+            }}>
+              <div style={{ padding: "12px 20px 20px", display: "flex", flexWrap: "wrap", gap: 4 }}>
+                {projects.map(p => {
+                  const i = PROJECTS.indexOf(p);
+                  return <ProjectCard key={i} project={p} isHighlighted={hoveredIdx===i}
+                    onHover={()=>setHoveredIdx(i)} onLeave={()=>setHoveredIdx(null)} onClick={()=>onSelect(p)} />;
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─── DROPDOWN SELECT ─── */
+function FilterSelect({ label, value, options, onChange }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <label style={{ fontSize: 9, color: C.textMuted, letterSpacing: "0.12em",
+        textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif" }}>{label}</label>
+      <select value={value} onChange={e => onChange(e.target.value)}
+        style={{
+          padding: "8px 12px", borderRadius: 10, border: `1px solid ${C.border}`,
+          background: C.bgCard, color: C.textDark, fontSize: 12,
+          fontFamily: "'DM Sans', sans-serif", cursor: "pointer",
+          appearance: "none",
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23a09882' fill='none' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E")`,
+          backgroundRepeat: "no-repeat",
+          backgroundPosition: "right 10px center",
+          paddingRight: 30, minWidth: 130, outline: "none", transition: "border-color 0.2s",
+        }}
+        onFocus={e => e.target.style.borderColor = C.gold}
+        onBlur={e => e.target.style.borderColor = C.border}
+      >
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
+/* ─── TIMELINE SCRUBBER ─── */
+const NUMERIC_YEARS = YEARS.filter(y => /^\d{4}$/.test(y)).map(Number);
+const MIN_YEAR = Math.min(...NUMERIC_YEARS);
+const MAX_YEAR = Math.max(...NUMERIC_YEARS);
+
+function TimelineScrubber({ currentYear, onChange, projectsByYear }) {
+  const trackRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const playRef = useRef(null);
+
+  const yearToPercent = (y) => ((y - MIN_YEAR) / (MAX_YEAR - MIN_YEAR)) * 100;
+  const percentToYear = (pct) => Math.round(MIN_YEAR + (pct / 100) * (MAX_YEAR - MIN_YEAR));
+
+  const updateFromMouse = (clientX) => {
+    if (!trackRef.current) return;
+    const rect = trackRef.current.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
+    onChange(percentToYear(pct));
+  };
+
+  useEffect(() => {
+    if (!dragging) return;
+    const move = (e) => { e.preventDefault(); updateFromMouse(e.clientX || e.touches?.[0]?.clientX); };
+    const up = () => setDragging(false);
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+    window.addEventListener("touchmove", move, { passive: false });
+    window.addEventListener("touchend", up);
+    return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up);
+      window.removeEventListener("touchmove", move); window.removeEventListener("touchend", up); };
+  }, [dragging]);
+
+  // Auto-play
+  useEffect(() => {
+    if (!isPlaying) { clearInterval(playRef.current); return; }
+    playRef.current = setInterval(() => {
+      onChange(prev => {
+        const next = prev + 1;
+        if (next > MAX_YEAR) { setIsPlaying(false); return MAX_YEAR; }
+        return next;
+      });
+    }, 600);
+    return () => clearInterval(playRef.current);
+  }, [isPlaying]);
+
+  const pct = yearToPercent(currentYear);
+
+  // Count projects per year for the timeline dots
+  const maxCount = Math.max(...NUMERIC_YEARS.map(y => projectsByYear[y]?.length || 0), 1);
+
+  return (
+    <div style={{ padding: "0 0 8px" }}>
+      {/* Year label + play */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+        <button onClick={() => { if (currentYear >= MAX_YEAR) onChange(MIN_YEAR); setIsPlaying(!isPlaying); }}
+          style={{
+            width: 36, height: 36, borderRadius: 18, border: `1px solid ${C.border}`,
+            background: isPlaying ? C.gold : C.bgCard, color: isPlaying ? "#fff" : C.gold,
+            fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+            transition: "all 0.25s", fontFamily: "sans-serif",
+          }}>
+          {isPlaying ? "❚❚" : "▶"}
+        </button>
+        <div style={{ textAlign: "center" }}>
+          <div style={{ fontFamily: "'Cormorant Garamond', Georgia, serif",
+            fontSize: 36, fontWeight: 300, color: C.textDark, lineHeight: 1 }}>
+            {currentYear}
+          </div>
+          <div style={{ fontSize: 10, color: C.textMuted, letterSpacing: "0.1em", marginTop: 2 }}>
+            {projectsByYear[currentYear]?.length || 0} new · {PROJECTS.filter(p => {
+              const py = parseInt(p.year); return !isNaN(py) && py <= currentYear;
+            }).length} total
+          </div>
+        </div>
+        <div style={{ width: 36 }} /> {/* spacer */}
+      </div>
+
+      {/* Track */}
+      <div ref={trackRef}
+        onMouseDown={(e) => { setDragging(true); updateFromMouse(e.clientX); }}
+        onTouchStart={(e) => { setDragging(true); updateFromMouse(e.touches[0].clientX); }}
+        style={{
+          position: "relative", height: 48, cursor: "pointer",
+          userSelect: "none", touchAction: "none",
+        }}>
+        {/* Bar background */}
+        <div style={{ position: "absolute", top: 20, left: 0, right: 0, height: 6,
+          background: C.borderLight, borderRadius: 3 }} />
+        {/* Filled portion */}
+        <div style={{ position: "absolute", top: 20, left: 0, width: `${pct}%`, height: 6,
+          background: `linear-gradient(90deg, ${C.gold}, ${C.goldLight})`, borderRadius: 3,
+          transition: dragging ? "none" : "width 0.3s ease" }} />
+
+        {/* Year ticks + mini bars */}
+        {NUMERIC_YEARS.map(y => {
+          const x = yearToPercent(y);
+          const count = projectsByYear[y]?.length || 0;
+          const barH = Math.max(2, (count / maxCount) * 16);
+          const isPast = y <= currentYear;
+          return (
+            <div key={y} style={{
+              position: "absolute", left: `${x}%`, transform: "translateX(-50%)",
+              display: "flex", flexDirection: "column", alignItems: "center",
+            }}>
+              {/* Mini project count bar */}
+              <div style={{
+                width: 4, height: barH, borderRadius: 2, marginBottom: 2,
+                background: isPast ? C.gold : C.border,
+                opacity: isPast ? 0.7 : 0.3,
+                transition: "background 0.3s, opacity 0.3s, height 0.3s",
+              }} />
+              {/* Tick */}
+              <div style={{
+                width: 2, height: 6,
+                background: isPast ? C.gold : C.border,
+                opacity: isPast ? 0.5 : 0.25,
+                transition: "background 0.3s, opacity 0.3s",
+              }} />
+              {/* Year label (every 5 years) */}
+              {(y % 5 === 0 || y === MIN_YEAR || y === MAX_YEAR) && (
+                <div style={{
+                  fontSize: 8, color: isPast ? C.textMid : C.textMuted,
+                  marginTop: 3, letterSpacing: "0.05em",
+                  fontWeight: y === currentYear ? 700 : 400,
+                  transition: "color 0.3s",
+                }}>{y}</div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Draggable handle */}
+        <div style={{
+          position: "absolute", top: 12, left: `${pct}%`,
+          transform: "translateX(-50%)",
+          width: 20, height: 20, borderRadius: 10,
+          background: C.gold, border: "3px solid #fff",
+          boxShadow: `0 2px 8px rgba(0,0,0,0.2), 0 0 0 ${dragging ? "6px" : "0px"} ${C.gold}30`,
+          cursor: "grab",
+          transition: dragging ? "box-shadow 0.15s" : "left 0.3s ease, box-shadow 0.15s",
+          zIndex: 5,
+        }} />
+      </div>
+    </div>
+  );
+}
+
+/* ─── VIEW 4: BALI MAP (with timeline + filters) ─── */
+function MapView({ onSelect }) {
+  const [selectedLoc, setSelectedLoc] = useState(null);
+  const [hoveredIdx, setHoveredIdx] = useState(null);
+  const [currentYear, setCurrentYear] = useState(MAX_YEAR);
+  const [filterStructure, setFilterStructure] = useState("all");
+  const [filterDesigner, setFilterDesigner] = useState("all");
+
+  const structureOptions = [{ value: "all", label: "All Structures" },
+    ...STRUCTURE_CATEGORIES.map(c => ({ value: c.key, label: c.label }))];
+  const designerOptions = [{ value: "all", label: "All Designers" },
+    ...DESIGNERS.map(d => ({ value: d, label: d }))];
+
+  // Projects up to currentYear with filters
+  const filtered = PROJECTS.filter(p => {
+    const py = parseInt(p.year);
+    if (isNaN(py) || py > currentYear) return false;
+    if (filterStructure !== "all" && p.classification !== filterStructure) return false;
+    if (filterDesigner !== "all" && p.designer !== filterDesigner) return false;
+    return true;
+  });
+
+  // Projects added in exactly currentYear (for highlighting)
+  const newThisYear = filtered.filter(p => parseInt(p.year) === currentYear);
+
+  // Projects by year for scrubber mini-bars
+  const projectsByYear = {};
+  PROJECTS.forEach(p => {
+    const py = parseInt(p.year);
+    if (!isNaN(py)) { if (!projectsByYear[py]) projectsByYear[py] = []; projectsByYear[py].push(p); }
+  });
+
+  const activeFilters = (filterStructure !== "all" ? 1 : 0) + (filterDesigner !== "all" ? 1 : 0);
+
+  // Group by location
+  const locGroups = {};
+  filtered.forEach(p => {
+    const key = getProjectLocation(p);
+    if (!locGroups[key]) locGroups[key] = [];
+    locGroups[key].push(p);
+  });
+
+  const mapW = 680, mapH = 520;
+  // Coordinate system matching Bali regency SVG
+  const minLon = 114.35, maxLon = 115.85, minLat = -8.85, maxLat = -8.03;
+  function toXY(lat, lng) {
+    return {
+      x: (lng - minLon) / (maxLon - minLon) * mapW,
+      y: (lat - maxLat) / (minLat - maxLat) * mapH
+    };
+  }
+
+  const clearFilters = () => { setFilterStructure("all"); setFilterDesigner("all"); };
+
+  return (
+    <div style={{ padding: "0 32px 48px", maxWidth: 1100, margin: "0 auto" }}>
+      {/* Timeline scrubber */}
+      <div style={{
+        marginBottom: 20, padding: "20px 24px 12px",
+        background: C.bgWarm, borderRadius: 12, border: `1px solid ${C.borderLight}`,
+      }}>
+        <TimelineScrubber currentYear={currentYear} onChange={setCurrentYear} projectsByYear={projectsByYear} />
+      </div>
+
+      {/* Structure + Designer filters */}
+      <div style={{
+        display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-end",
+        marginBottom: 20, padding: "12px 20px",
+        background: C.bgWarm, borderRadius: 12, border: `1px solid ${C.borderLight}`,
+      }}>
+        <FilterSelect label="Structure" value={filterStructure} options={structureOptions} onChange={setFilterStructure} />
+        <FilterSelect label="Designer" value={filterDesigner} options={designerOptions} onChange={setFilterDesigner} />
+        <div style={{ display: "flex", alignItems: "center", gap: 12, paddingBottom: 2 }}>
+          <div style={{ fontSize: 12, color: C.gold, fontWeight: 600 }}>
+            {filtered.length} project{filtered.length !== 1 ? "s" : ""} by {currentYear}
+          </div>
+          {activeFilters > 0 && (
+            <button onClick={clearFilters} style={{
+              padding: "6px 14px", borderRadius: 20, border: `1px solid ${C.border}`,
+              background: "transparent", color: C.textMid, fontSize: 11,
+              cursor: "pointer", fontFamily: "'DM Sans', sans-serif", transition: "all 0.2s",
+            }}
+              onMouseEnter={e => { e.target.style.background = C.bgCard; e.target.style.borderColor = C.gold; }}
+              onMouseLeave={e => { e.target.style.background = "transparent"; e.target.style.borderColor = C.border; }}
+            >Clear</button>
+          )}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 24, flexWrap: "wrap" }}>
+        {/* Map */}
+        <div style={{ flex: "1 1 420px", minWidth: 340 }}>
+          <div style={{
+            position: "relative", width: "100%", paddingBottom: `${(mapH/mapW)*100}%`,
+            background: `linear-gradient(135deg, #d4cbb8 0%, #c8bfa8 50%, #beb5a0 100%)`,
+            borderRadius: 12, overflow: "hidden", border: `1px solid ${C.border}`,
+          }}>
+            <svg viewBox={`0 0 ${mapW} ${mapH}`} style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%" }}>
+              {/* Water background */}
+              <rect width={mapW} height={mapH} fill="#c0d4d8" opacity="0.25" />
+              {/* Bali regencies */}
+              {BALI_REGENCIES.map(reg => (
+                <g key={reg.name}>
+                  <path d={reg.path} fill="#e8e0d0" stroke={C.border} strokeWidth="1" />
+                  <path d={reg.path} fill="none" stroke="#fff" strokeWidth="0.5" opacity="0.6" />
+                </g>
+              ))}
+              {/* Regency labels (small) */}
+              {BALI_REGENCIES.map(reg => {
+                // Approximate center of each regency for label
+                const pts = reg.path.match(/[\d.]+/g).map(Number);
+                let cx = 0, cy = 0, n = 0;
+                for (let i = 0; i < pts.length; i += 2) { cx += pts[i]; cy += pts[i+1]; n++; }
+                cx /= n; cy /= n;
+                return (
+                  <text key={reg.name} x={cx} y={cy} textAnchor="middle" dominantBaseline="central"
+                    style={{ fontSize: 8, fill: C.textMuted, fontFamily: "'DM Sans', sans-serif",
+                      letterSpacing: "0.08em", textTransform: "uppercase", opacity: 0.5 }}>
+                    {reg.name}
+                  </text>
+                );
+              })}
+
+              {Object.entries(LOCATIONS).map(([key, loc]) => {
+                if (!loc.lat) return null;
+                const pos = toXY(loc.lat, loc.lng);
+                const count = locGroups[key]?.length || 0;
+                const newCount = newThisYear.filter(p => getProjectLocation(p) === key).length;
+                const isSelected = selectedLoc === key;
+                const isEmpty = count === 0;
+                const r = isEmpty ? 8 : Math.max(14, Math.min(30, 10 + count * 0.8));
+                return (
+                  <g key={key} onClick={() => !isEmpty && setSelectedLoc(isSelected ? null : key)}
+                    style={{ cursor: isEmpty ? "default" : "pointer" }}>
+                    {/* Pulse ring for new projects */}
+                    {newCount > 0 && !isEmpty && (
+                      <circle cx={pos.x} cy={pos.y} r={r + 10}
+                        fill="none" stroke={C.gold} strokeWidth="2" opacity="0.4">
+                        <animate attributeName="r" from={r + 4} to={r + 18} dur="1.5s" repeatCount="indefinite" />
+                        <animate attributeName="opacity" from="0.5" to="0" dur="1.5s" repeatCount="indefinite" />
+                      </circle>
+                    )}
+                    <circle cx={pos.x} cy={pos.y} r={r + 4}
+                      fill={isSelected ? `${C.gold}30` : "transparent"}
+                      stroke={isSelected ? C.gold : "transparent"} strokeWidth="1.5"
+                      style={{ transition: "all 0.4s" }} />
+                    <circle cx={pos.x} cy={pos.y} r={r}
+                      fill={isSelected ? C.bgDark : isEmpty ? `${C.textMuted}40` : C.gold}
+                      stroke="#fff" strokeWidth={isEmpty ? 1 : 2}
+                      style={{ transition: "all 0.4s ease", filter: isEmpty ? "none" : "drop-shadow(0 2px 4px rgba(0,0,0,0.2))" }} />
+                    {!isEmpty && <text x={pos.x} y={pos.y + 1} textAnchor="middle" dominantBaseline="central"
+                      style={{ fontSize: 11, fill: isSelected ? C.gold : "#fff", fontWeight: 700,
+                        fontFamily: "'DM Sans', sans-serif", transition: "all 0.3s" }}>{count}</text>}
+                    <text x={pos.x} y={pos.y + r + 14} textAnchor="middle"
+                      style={{ fontSize: 10, fill: isEmpty ? C.textMuted : C.textDark, fontWeight: 600,
+                        fontFamily: "'DM Sans', sans-serif", letterSpacing: "0.05em",
+                        opacity: isEmpty ? 0.4 : 1, transition: "all 0.3s" }}>{loc.name}</text>
+                  </g>
+                );
+              })}
+            </svg>
+          </div>
+          {/* International row */}
+          {(() => {
+            const intlCount = locGroups["_INTERNATIONAL"]?.length || 0;
+            return (
+              <div style={{ marginTop: 16, padding: "12px 16px", background: C.bgWarm, borderRadius: 10,
+                border: `1px solid ${C.borderLight}`, opacity: intlCount > 0 ? 1 : 0.35, transition: "opacity 0.3s" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: intlCount ? "pointer" : "default" }}
+                  onClick={() => intlCount > 0 && setSelectedLoc(selectedLoc === "_INTERNATIONAL" ? null : "_INTERNATIONAL")}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: C.textDark }}>International Projects</span>
+                  <span style={{ fontSize: 12, color: C.gold, fontWeight: 600 }}>{intlCount} projects</span>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* Side panel */}
+        <div style={{ flex: "1 1 280px", minWidth: 260 }}>
+          {selectedLoc && (locGroups[selectedLoc]?.length || 0) > 0 ? (
+            <div>
+              <div style={{ marginBottom: 16 }}>
+                <h3 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif",
+                  fontSize: 24, fontWeight: 400, color: C.textDark, margin: "0 0 4px" }}>
+                  {LOCATIONS[selectedLoc]?.name || "Projects"}
+                </h3>
+                <div style={{ fontSize: 12, color: C.textMuted }}>{LOCATIONS[selectedLoc]?.desc}</div>
+                <div style={{ fontSize: 12, color: C.gold, fontWeight: 600, marginTop: 4 }}>
+                  {locGroups[selectedLoc].length} project{locGroups[selectedLoc].length !== 1 ? "s" : ""} by {currentYear}
+                  {activeFilters > 0 && <span style={{ color: C.textMuted, fontWeight: 400 }}> (filtered)</span>}
+                </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 440, overflowY: "auto" }}>
+                {(locGroups[selectedLoc] || []).sort((a,b) => (a.year > b.year ? 1 : -1)).map(p => {
+                  const i = PROJECTS.indexOf(p);
+                  const isNew = parseInt(p.year) === currentYear;
+                  return (
+                    <div key={i} style={{
+                      position: "relative",
+                      borderLeft: isNew ? `3px solid ${C.gold}` : "none",
+                      paddingLeft: isNew ? 0 : 3,
+                    }}>
+                      <ProjectCard project={p} isHighlighted={hoveredIdx===i}
+                        onHover={()=>setHoveredIdx(i)} onLeave={()=>setHoveredIdx(null)} onClick={()=>onSelect(p)} />
+                      {isNew && <div style={{
+                        position: "absolute", top: 4, right: 8,
+                        fontSize: 8, color: C.gold, fontWeight: 700,
+                        letterSpacing: "0.1em", textTransform: "uppercase",
+                      }}>NEW</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div style={{ textAlign: "center", paddingTop: 60 }}>
+              <div style={{ fontFamily: "'Cormorant Garamond', Georgia, serif",
+                fontSize: 20, color: C.textMuted, fontStyle: "italic" }}>
+                {filtered.length === 0 ? "No projects yet" : "Select a location"}
+              </div>
+              <div style={{ fontSize: 12, color: C.textMuted, marginTop: 8 }}>
+                {filtered.length === 0
+                  ? `Drag the timeline past ${MIN_YEAR} to see projects appear`
+                  : "Click a marker to explore projects at that compound"}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── PILL BUTTON ─── */
+function PillBtn({ active, color, onClick, children }) {
+  return (
+    <button onClick={onClick} style={{
+      padding: "8px 20px", borderRadius: 20,
+      border: `1px solid ${active ? color : C.border}`,
+      background: active ? `${color}12` : "transparent",
+      color: active ? color : C.textMuted,
+      fontSize: 11, fontWeight: 600, cursor: "pointer",
+      transition: "all 0.25s", letterSpacing: "0.08em",
+      textTransform: "uppercase", fontFamily: "'DM Sans', sans-serif",
+    }}>{children}</button>
+  );
+}
+
+/* ─── STATS ─── */
+function StatsBar() {
+  const ny = YEARS.filter(y => y !== "ON GOING");
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 48, padding: "24px 32px 32px" }}>
+      {[
+        { label: "Total Projects", value: PROJECTS.length },
+        { label: "Years Active", value: `${ny[0]}–${ny[ny.length-1]}` },
+        { label: "Structure Types", value: STRUCTURE_CATEGORIES.length },
+        { label: "Locations", value: Object.keys(LOCATIONS).length },
+      ].map(s => (
+        <div key={s.label} style={{ textAlign: "center" }}>
+          <div style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 32,
+            fontWeight: 300, color: C.textDark }}>{s.value}</div>
+          <div style={{ fontSize: 9, color: C.textMuted, letterSpacing: "0.2em",
+            textTransform: "uppercase", marginTop: 4 }}>{s.label}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ─── ANIMATED VIEW ─── */
+function AnimatedView({ isVisible, direction, children }) {
+  const [shouldRender, setShouldRender] = useState(isVisible);
+  const [animState, setAnimState] = useState(isVisible ? "entered" : "exited");
+  useEffect(() => {
+    if (isVisible) {
+      setShouldRender(true);
+      requestAnimationFrame(() => { requestAnimationFrame(() => setAnimState("entering")); });
+      const t = setTimeout(() => setAnimState("entered"), 500);
+      return () => clearTimeout(t);
+    } else {
+      setAnimState("exiting");
+      const t = setTimeout(() => { setAnimState("exited"); setShouldRender(false); }, 400);
+      return () => clearTimeout(t);
+    }
+  }, [isVisible]);
+  if (!shouldRender) return null;
+  const s = direction === "left" ? -40 : 40;
+  const st = {
+    entering: { opacity: 1, transform: "translateX(0)", filter: "blur(0px)" },
+    entered: { opacity: 1, transform: "translateX(0)", filter: "blur(0px)" },
+    exiting: { opacity: 0, transform: `translateX(${-s}px)`, filter: "blur(3px)" },
+    exited: { opacity: 0, transform: `translateX(${s}px)`, filter: "blur(3px)" },
+  };
+  return <div style={{ transition: "opacity 0.4s cubic-bezier(0.4,0,0.2,1), transform 0.45s cubic-bezier(0.4,0,0.2,1), filter 0.35s ease",
+    willChange: "opacity, transform, filter", ...st[animState] }}>{children}</div>;
+}
+
+/* ─── VIEW TOGGLE (4 tabs) ─── */
+const VIEWS = [
+  { key: "map", label: "Map" },
+  { key: "roadmap", label: "Roadmap" },
+  { key: "structure", label: "Structure" },
+  { key: "designer", label: "Designer" },
+];
+
+function ViewToggle({ view, setView }) {
+  const idx = VIEWS.findIndex(v => v.key === view);
+  return (
+    <div style={{ display: "flex", justifyContent: "center", margin: "0 auto 32px" }}>
+      <div style={{ position: "relative", display: "flex", maxWidth: 520, width: "95%",
+        background: C.bgWarm, borderRadius: 10, overflow: "hidden" }}>
+        <div style={{
+          position: "absolute", top: 3, bottom: 3,
+          left: `calc(${(idx / VIEWS.length) * 100}% + 3px)`,
+          width: `calc(${100 / VIEWS.length}% - 6px)`,
+          background: C.bgDark,
+          borderRadius: 8,
+          transition: "left 0.4s cubic-bezier(0.4, 0, 0.2, 1)",
+          zIndex: 0,
+          boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+        }} />
+        {VIEWS.map(v => (
+          <button key={v.key} onClick={() => setView(v.key)}
+            style={{
+              flex: 1, padding: "13px 16px", border: "none", background: "transparent",
+              color: view === v.key ? C.textOnDark : C.textMid,
+              fontSize: 11, fontWeight: 600, cursor: "pointer",
+              transition: "color 0.35s ease", fontFamily: "'DM Sans', sans-serif",
+              letterSpacing: "0.1em", textTransform: "uppercase",
+              position: "relative", zIndex: 1,
+            }}>{v.label}</button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─── CONTRIBUTORS DATA (placeholder) ─── */
+const CONTRIBUTORS = [
+  "Nicholas Putra Wijaya", "Dewa Gede Agus Dediana", "Putu Wirasatya Kresna Agustana",
+  "Ida Bagus Weda Mahendra",
+];
+
+/* ─── CONTRIBUTORS PAGE ─── */
+function ContributePage({ onBack }) {
+  const [formData, setFormData] = useState({ name: "", email: "", type: "correction", project: "", message: "" });
+  const [submitted, setSubmitted] = useState(false);
+
+  const handleSubmit = () => {
+    if (!formData.name || !formData.message) return;
+    setSubmitted(true);
+    setTimeout(() => setSubmitted(false), 4000);
+    setFormData({ name: "", email: "", type: "correction", project: "", message: "" });
+  };
+
+  const inputStyle = {
+    padding: "10px 14px", borderRadius: 10, border: `1px solid ${C.border}`,
+    background: C.bgCard, color: C.textDark, fontSize: 13,
+    fontFamily: "'DM Sans', sans-serif", outline: "none", width: "100%",
+    boxSizing: "border-box", transition: "border-color 0.2s",
+  };
+
+  return (
+    <div style={{ padding: "0 32px 60px", maxWidth: 900, margin: "0 auto" }}>
+      {/* Page header */}
+      <div style={{ textAlign: "center", marginBottom: 40 }}>
+        <h2 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif",
+          fontSize: 38, fontWeight: 300, color: C.textDark, margin: "0 0 6px" }}>
+          Contributors
+        </h2>
+        <p style={{ fontFamily: "'Cormorant Garamond', Georgia, serif",
+          fontSize: 20, fontStyle: "italic", color: C.gold, margin: 0 }}>
+          The people behind the documentation
+        </p>
+        <div style={{ width: 50, height: 1,
+          background: `linear-gradient(90deg, transparent, ${C.gold}, transparent)`,
+          margin: "16px auto 0" }} />
+      </div>
+
+      <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
+        {/* Left: contributors list */}
+        <div style={{ flex: "1 1 340px", minWidth: 300 }}>
+          <div style={{ fontSize: 10, color: C.textMuted, letterSpacing: "0.15em",
+            textTransform: "uppercase", marginBottom: 16, fontWeight: 600 }}>
+            Contributors
+          </div>
+
+          {/* Flowing name cloud */}
+          <div style={{
+            padding: "24px", background: C.bgWarm, borderRadius: 12,
+            border: `1px solid ${C.borderLight}`, marginBottom: 20,
+            lineHeight: 2.4, overflow: "hidden", wordWrap: "break-word",
+          }}>
+            {CONTRIBUTORS.map((name, i) => {
+              const sizes = [13, 14, 12, 14, 13, 12];
+              const sz = sizes[i % sizes.length];
+              const opacity = 0.5 + (i % 4) * 0.12;
+              return (
+                <span key={i} style={{
+                  fontSize: sz,
+                  color: C.textMid,
+                  opacity,
+                  fontFamily: "'DM Sans', sans-serif",
+                  fontWeight: 400,
+                  marginRight: 8,
+                  display: "inline",
+                  transition: "opacity 0.2s, color 0.2s",
+                  cursor: "default",
+                }}
+                  onMouseEnter={e => { e.target.style.opacity = 1; e.target.style.color = C.textDark; }}
+                  onMouseLeave={e => { e.target.style.opacity = opacity; e.target.style.color = C.textMid; }}
+                >{name}</span>
+              );
+            })}
+          </div>
+
+          {/* Invite card */}
+          <div style={{
+            padding: "24px", marginTop: 20,
+            background: `linear-gradient(135deg, ${C.gold}08, ${C.gold}15)`,
+            borderRadius: 12, border: `1px solid ${C.gold}25`,
+            textAlign: "center",
+          }}>
+            <div style={{ fontFamily: "'Cormorant Garamond', Georgia, serif",
+              fontSize: 22, fontWeight: 400, color: C.textDark, marginBottom: 8 }}>
+              Join the Documentation Effort
+            </div>
+            <p style={{ fontSize: 13, color: C.textMid, lineHeight: 1.6, margin: "0 0 8px" }}>
+              Help us build the most comprehensive record of bamboo architecture.
+              Every correction, photo, and detail matters.
+            </p>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginTop: 14 }}>
+              {["Add missing projects", "Correct data", "Add designer info", "Provide GPS coordinates", "Share photographs"].map(tag => (
+                <span key={tag} style={{
+                  padding: "5px 14px", borderRadius: 20, fontSize: 10,
+                  background: C.bgCard, border: `1px solid ${C.border}`,
+                  color: C.textMid, letterSpacing: "0.04em",
+                }}>{tag}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right: submission form */}
+        <div style={{ flex: "1 1 340px", minWidth: 300 }}>
+          <div style={{ fontSize: 10, color: C.textMuted, letterSpacing: "0.15em",
+            textTransform: "uppercase", marginBottom: 16, fontWeight: 600 }}>
+            Submit a Correction or Addition
+          </div>
+
+          <div style={{
+            padding: "24px", background: C.bgCard, borderRadius: 12,
+            border: `1px solid ${C.borderLight}`,
+          }}>
+            {submitted ? (
+              <div style={{ textAlign: "center", padding: "40px 0" }}>
+                <div style={{ fontSize: 32, marginBottom: 12 }}>✓</div>
+                <div style={{ fontFamily: "'Cormorant Garamond', Georgia, serif",
+                  fontSize: 22, color: C.textDark, marginBottom: 6 }}>Thank you!</div>
+                <div style={{ fontSize: 13, color: C.textMuted }}>
+                  Your submission has been recorded. We'll review it soon.
+                </div>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {/* Name */}
+                <div>
+                  <label style={{ fontSize: 10, color: C.textMuted, letterSpacing: "0.1em",
+                    textTransform: "uppercase", display: "block", marginBottom: 4 }}>Your Name *</label>
+                  <input style={inputStyle} value={formData.name}
+                    onChange={e => setFormData({...formData, name: e.target.value})}
+                    placeholder="e.g. Made Surya"
+                    onFocus={e => e.target.style.borderColor = C.gold}
+                    onBlur={e => e.target.style.borderColor = C.border} />
+                </div>
+
+                {/* Email */}
+                <div>
+                  <label style={{ fontSize: 10, color: C.textMuted, letterSpacing: "0.1em",
+                    textTransform: "uppercase", display: "block", marginBottom: 4 }}>Email</label>
+                  <input style={inputStyle} value={formData.email}
+                    onChange={e => setFormData({...formData, email: e.target.value})}
+                    placeholder="your@email.com (optional)"
+                    onFocus={e => e.target.style.borderColor = C.gold}
+                    onBlur={e => e.target.style.borderColor = C.border} />
+                </div>
+
+                {/* Type */}
+                <div>
+                  <label style={{ fontSize: 10, color: C.textMuted, letterSpacing: "0.1em",
+                    textTransform: "uppercase", display: "block", marginBottom: 4 }}>Submission Type</label>
+                  <select style={{...inputStyle, cursor: "pointer", appearance: "none",
+                    backgroundImage: `url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23a09882' fill='none' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E")`,
+                    backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", paddingRight: 30 }}
+                    value={formData.type}
+                    onChange={e => setFormData({...formData, type: e.target.value})}
+                    onFocus={e => e.target.style.borderColor = C.gold}
+                    onBlur={e => e.target.style.borderColor = C.border}>
+                    <option value="correction">Data Correction</option>
+                    <option value="new_project">New Project</option>
+                    <option value="designer">Designer Attribution</option>
+                    <option value="location">GPS / Location Data</option>
+                    <option value="photo">Photograph</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+
+                {/* Project name */}
+                <div>
+                  <label style={{ fontSize: 10, color: C.textMuted, letterSpacing: "0.1em",
+                    textTransform: "uppercase", display: "block", marginBottom: 4 }}>Project Name</label>
+                  <input style={inputStyle} value={formData.project}
+                    onChange={e => setFormData({...formData, project: e.target.value})}
+                    placeholder="Which project does this relate to?"
+                    onFocus={e => e.target.style.borderColor = C.gold}
+                    onBlur={e => e.target.style.borderColor = C.border} />
+                </div>
+
+                {/* Message */}
+                <div>
+                  <label style={{ fontSize: 10, color: C.textMuted, letterSpacing: "0.1em",
+                    textTransform: "uppercase", display: "block", marginBottom: 4 }}>Details *</label>
+                  <textarea style={{...inputStyle, minHeight: 100, resize: "vertical", lineHeight: 1.5}}
+                    value={formData.message}
+                    onChange={e => setFormData({...formData, message: e.target.value})}
+                    placeholder="Describe the correction, addition, or information you'd like to share..."
+                    onFocus={e => e.target.style.borderColor = C.gold}
+                    onBlur={e => e.target.style.borderColor = C.border} />
+                </div>
+
+                {/* Submit */}
+                <button onClick={handleSubmit}
+                  disabled={!formData.name || !formData.message}
+                  style={{
+                    padding: "13px 24px", borderRadius: 10, border: "none",
+                    background: (!formData.name || !formData.message) ? C.border : C.bgDark,
+                    color: (!formData.name || !formData.message) ? C.textMuted : C.textOnDark,
+                    fontSize: 12, fontWeight: 600, cursor: (!formData.name || !formData.message) ? "default" : "pointer",
+                    letterSpacing: "0.1em", textTransform: "uppercase",
+                    fontFamily: "'DM Sans', sans-serif",
+                    transition: "all 0.25s",
+                  }}>
+                  Submit Contribution
+                </button>
+
+                <div style={{ fontSize: 11, color: C.textMuted, lineHeight: 1.5 }}>
+                  Submissions are reviewed by the documentation team before being added to the database.
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── LANDING PAGE (Editable) ─── */
+const DEFAULT_CONTENT = {
+  heroHeadline: "",
+  heroSubtitle: "",
+  heroBody: "",
+  sectionTitle: "",
+  sectionSubtitle: "",
+  milestones: [
+    { year: "2005", title: "", text: "" },
+    { year: "2008", title: "", text: "" },
+    { year: "2011", title: "", text: "" },
+    { year: "2013", title: "", text: "" },
+    { year: "2018", title: "", text: "" },
+    { year: "2025", title: "", text: "" },
+  ],
+  ctaText: "",
+  ctaTagline: "",
+};
+
+function LandingPage({ onEnter }) {
+  const [editing, setEditing] = useState(false);
+  const [content, setContent] = useState(DEFAULT_CONTENT);
+  const [loaded, setLoaded] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [scrollY, setScrollY] = useState(0);
+  const containerRef = useRef(null);
+
+  // Load from storage
+  useEffect(() => {
+    (async () => {
+      try {
+        const result = await window.storage.get("landing-content");
+        if (result && result.value) {
+          const parsed = JSON.parse(result.value);
+          setContent({ ...DEFAULT_CONTENT, ...parsed });
+        }
+      } catch (e) { /* no saved content yet */ }
+      setLoaded(true);
+    })();
+  }, []);
+
+  // Save to storage
+  const handleSave = async () => {
+    try {
+      await window.storage.set("landing-content", JSON.stringify(content));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+      setEditing(false);
+    } catch (e) { console.error("Save failed", e); }
+  };
+
+  // Scroll tracking
+  useEffect(() => {
+    const handle = () => setScrollY(window.scrollY || document.documentElement.scrollTop);
+    window.addEventListener("scroll", handle, { passive: true });
+    return () => window.removeEventListener("scroll", handle);
+  }, []);
+
+  const updateField = (field, value) => setContent(c => ({ ...c, [field]: value }));
+  const updateMilestone = (i, field, value) => {
+    setContent(c => {
+      const ms = [...c.milestones];
+      ms[i] = { ...ms[i], [field]: value };
+      return { ...c, milestones: ms };
+    });
+  };
+  const addMilestone = () => {
+    setContent(c => ({ ...c, milestones: [...c.milestones, { year: "", title: "", text: "" }] }));
+  };
+  const removeMilestone = (i) => {
+    setContent(c => ({ ...c, milestones: c.milestones.filter((_, idx) => idx !== i) }));
+  };
+
+  const placeholder = (text) => <span style={{ color: C.textMuted, opacity: 0.4, fontStyle: "italic" }}>{text}</span>;
+
+  // Editable text field (inline)
+  const EditableField = ({ value, onChange, placeholderText, multiline, style: fieldStyle }) => {
+    if (!editing) {
+      return <span style={fieldStyle}>{value || placeholder(placeholderText)}</span>;
+    }
+    if (multiline) {
+      return <textarea value={value} onChange={e => onChange(e.target.value)}
+        placeholder={placeholderText}
+        style={{
+          ...fieldStyle, background: `${C.gold}08`, border: `1px solid ${C.gold}30`,
+          borderRadius: 8, padding: "8px 12px", outline: "none", resize: "vertical",
+          width: "100%", boxSizing: "border-box", minHeight: 60,
+          fontFamily: fieldStyle?.fontFamily || "'DM Sans', sans-serif",
+          transition: "border-color 0.2s",
+        }}
+        onFocus={e => e.target.style.borderColor = C.gold}
+        onBlur={e => e.target.style.borderColor = `${C.gold}30`}
+      />;
+    }
+    return <input value={value} onChange={e => onChange(e.target.value)}
+      placeholder={placeholderText}
+      style={{
+        ...fieldStyle, background: `${C.gold}08`, border: `1px solid ${C.gold}30`,
+        borderRadius: 8, padding: "6px 12px", outline: "none",
+        width: "100%", boxSizing: "border-box",
+        fontFamily: fieldStyle?.fontFamily || "'DM Sans', sans-serif",
+        transition: "border-color 0.2s",
+      }}
+      onFocus={e => e.target.style.borderColor = C.gold}
+      onBlur={e => e.target.style.borderColor = `${C.gold}30`}
+    />;
+  };
+
+  if (!loaded) return <div style={{ padding: 60, textAlign: "center", color: C.textMuted }}>Loading...</div>;
+
+  return (
+    <div ref={containerRef}>
+      {/* Edit toggle button */}
+      <div style={{
+        position: "fixed", bottom: 24, right: 24, zIndex: 200,
+        display: "flex", gap: 8,
+      }}>
+        {editing ? (
+          <>
+            <button onClick={() => setEditing(false)} style={{
+              padding: "10px 20px", borderRadius: 10, border: `1px solid ${C.border}`,
+              background: C.bgCard, color: C.textMid, fontSize: 12, fontWeight: 600,
+              cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
+            }}>Cancel</button>
+            <button onClick={handleSave} style={{
+              padding: "10px 24px", borderRadius: 10, border: "none",
+              background: C.bgDark, color: C.textOnDark, fontSize: 12, fontWeight: 600,
+              cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+              letterSpacing: "0.08em",
+              boxShadow: "0 4px 16px rgba(0,0,0,0.15)",
+            }}>Save & Preview</button>
+          </>
+        ) : (
+          <button onClick={() => setEditing(true)} style={{
+            padding: "10px 24px", borderRadius: 10, border: "none",
+            background: C.gold, color: "#fff", fontSize: 12, fontWeight: 600,
+            cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+            letterSpacing: "0.08em",
+            boxShadow: "0 4px 16px rgba(197,160,78,0.3)",
+            transition: "transform 0.2s, box-shadow 0.2s",
+          }}
+            onMouseEnter={e => { e.target.style.transform = "translateY(-2px)"; }}
+            onMouseLeave={e => { e.target.style.transform = "translateY(0)"; }}
+          >{saved ? "✓ Saved!" : "Edit Content"}</button>
+        )}
+      </div>
+
+      {/* Editing indicator bar */}
+      {editing && (
+        <div style={{
+          background: `${C.gold}15`, borderBottom: `1px solid ${C.gold}30`,
+          padding: "10px 32px", textAlign: "center",
+          fontSize: 12, color: C.gold, fontWeight: 500, letterSpacing: "0.05em",
+        }}>
+          Editing mode — click any text to edit, then "Save & Preview" when done
+        </div>
+      )}
+
+      {/* ── HERO SECTION ── */}
+      <div style={{
+        minHeight: editing ? "auto" : "85vh",
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        textAlign: "center", padding: editing ? "48px 32px 40px" : "80px 32px 60px",
+        position: "relative", overflow: "hidden",
+      }}>
+        <div style={{
+          position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+          opacity: 0.04, pointerEvents: "none",
+          backgroundImage: `repeating-linear-gradient(90deg, ${C.textDark} 0px, transparent 1px, transparent 80px)`,
+        }} />
+
+        <div style={{ fontSize: 10, letterSpacing: "0.4em", color: C.textMuted,
+          textTransform: "uppercase", marginBottom: 32, fontWeight: 500 }}>
+          IBUKU Bamboo Building
+        </div>
+
+        <div style={{ maxWidth: 700, width: "100%", marginBottom: 16 }}>
+          <EditableField value={content.heroHeadline} onChange={v => updateField("heroHeadline", v)}
+            placeholderText="Your Big Statement Here"
+            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif",
+              fontSize: editing ? 36 : 64, fontWeight: 300, color: C.textDark,
+              letterSpacing: "0.04em", lineHeight: 1.05, display: "block", textAlign: "center" }} />
+        </div>
+
+        <div style={{ maxWidth: 500, width: "100%", marginBottom: 20 }}>
+          <EditableField value={content.heroSubtitle} onChange={v => updateField("heroSubtitle", v)}
+            placeholderText="A poetic subtitle about bamboo, nature, legacy..."
+            style={{ fontFamily: "'Cormorant Garamond', Georgia, serif",
+              fontSize: editing ? 18 : 22, fontWeight: 300, fontStyle: "italic",
+              color: C.gold, lineHeight: 1.5, display: "block", textAlign: "center" }} />
+        </div>
+
+        <div style={{ width: 50, height: 1,
+          background: `linear-gradient(90deg, transparent, ${C.gold}, transparent)`,
+          margin: "0 auto 32px" }} />
+
+        <div style={{ maxWidth: 540, width: "100%", marginBottom: 48 }}>
+          <EditableField value={content.heroBody} onChange={v => updateField("heroBody", v)}
+            placeholderText="Write 2-3 sentences explaining what this documentation is. What does it capture? Why does it matter?"
+            multiline
+            style={{ fontSize: 15, color: C.textMid, lineHeight: 1.8, display: "block", textAlign: "center" }} />
+        </div>
+
+        {!editing && (
+          <div style={{
+            position: "absolute", bottom: 32,
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 8,
+            opacity: scrollY > 50 ? 0 : 0.5, transition: "opacity 0.5s",
+          }}>
+            <div style={{ fontSize: 10, color: C.textMuted, letterSpacing: "0.15em", textTransform: "uppercase" }}>
+              Scroll to explore
+            </div>
+            <div style={{ width: 1, height: 24,
+              background: `linear-gradient(180deg, ${C.textMuted}, transparent)` }} />
+          </div>
+        )}
+      </div>
+
+      {/* ── HISTORY TIMELINE ── */}
+      <div style={{
+        padding: "60px 32px 80px", background: C.bgWarm,
+        borderTop: `1px solid ${C.borderLight}`, borderBottom: `1px solid ${C.borderLight}`,
+      }}>
+        <div style={{ maxWidth: 800, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 52 }}>
+            <div style={{ fontSize: 10, letterSpacing: "0.3em", color: C.textMuted,
+              textTransform: "uppercase", marginBottom: 12 }}>The Journey</div>
+            <div style={{ maxWidth: 600, margin: "0 auto", marginBottom: 8 }}>
+              <EditableField value={content.sectionTitle} onChange={v => updateField("sectionTitle", v)}
+                placeholderText="Your History Section Title"
+                style={{ fontFamily: "'Cormorant Garamond', Georgia, serif",
+                  fontSize: editing ? 28 : 38, fontWeight: 300, color: C.textDark,
+                  display: "block", textAlign: "center" }} />
+            </div>
+            <div style={{ maxWidth: 500, margin: "0 auto" }}>
+              <EditableField value={content.sectionSubtitle} onChange={v => updateField("sectionSubtitle", v)}
+                placeholderText="A line about the arc of the story"
+                style={{ fontFamily: "'Cormorant Garamond', Georgia, serif",
+                  fontSize: 18, fontStyle: "italic", color: C.gold,
+                  display: "block", textAlign: "center" }} />
+            </div>
+          </div>
+
+          {/* Timeline */}
+          <div style={{ position: "relative" }}>
+            <div style={{ position: "absolute", left: 28, top: 0, bottom: 0,
+              width: 1, background: C.border }} />
+
+            {content.milestones.map((m, i) => (
+              <div key={i} style={{ display: "flex", gap: 24, marginBottom: 40, position: "relative" }}>
+                <div style={{ width: 56, minWidth: 56, display: "flex", flexDirection: "column",
+                  alignItems: "center", paddingTop: 4 }}>
+                  <div style={{ width: 12, height: 12, borderRadius: 6, background: C.gold,
+                    border: `3px solid ${C.bgWarm}`, boxShadow: `0 0 0 1px ${C.gold}40`, zIndex: 1 }} />
+                  {editing ? (
+                    <input value={m.year} onChange={e => updateMilestone(i, "year", e.target.value)}
+                      placeholder="Year"
+                      style={{ width: 50, marginTop: 6, textAlign: "center", fontSize: 16, fontWeight: 500,
+                        color: C.gold, background: `${C.gold}08`, border: `1px solid ${C.gold}30`,
+                        borderRadius: 6, padding: "2px 4px", outline: "none",
+                        fontFamily: "'Cormorant Garamond', Georgia, serif" }} />
+                  ) : (
+                    <div style={{ fontFamily: "'Cormorant Garamond', Georgia, serif",
+                      fontSize: 18, fontWeight: 500, color: C.gold, marginTop: 8 }}>
+                      {m.year || placeholder("Year")}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ flex: 1, padding: "20px 28px", background: C.bgCard, borderRadius: 12,
+                  border: `1px solid ${C.borderLight}`, boxShadow: "0 2px 8px rgba(0,0,0,0.03)",
+                  position: "relative" }}>
+                  {editing && (
+                    <button onClick={() => removeMilestone(i)} style={{
+                      position: "absolute", top: 8, right: 12, background: "none",
+                      border: "none", fontSize: 16, color: C.textMuted, cursor: "pointer",
+                      opacity: 0.5,
+                    }}>×</button>
+                  )}
+                  <div style={{ marginBottom: 8 }}>
+                    <EditableField value={m.title} onChange={v => updateMilestone(i, "title", v)}
+                      placeholderText="Milestone title"
+                      style={{ fontFamily: "'Cormorant Garamond', Georgia, serif",
+                        fontSize: 20, fontWeight: 500, color: C.textDark, display: "block" }} />
+                  </div>
+                  <EditableField value={m.text} onChange={v => updateMilestone(i, "text", v)}
+                    placeholderText="Describe what happened, what was built, why it matters..."
+                    multiline
+                    style={{ fontSize: 13, color: C.textMid, lineHeight: 1.7, display: "block" }} />
+                </div>
+              </div>
+            ))}
+
+            {editing && (
+              <button onClick={addMilestone} style={{
+                display: "flex", alignItems: "center", gap: 8,
+                marginLeft: 80, padding: "10px 20px", borderRadius: 10,
+                border: `1px dashed ${C.gold}50`, background: `${C.gold}06`,
+                color: C.gold, fontSize: 12, fontWeight: 500, cursor: "pointer",
+                fontFamily: "'DM Sans', sans-serif",
+              }}>
+                + Add milestone
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── STATS + ENTER ── */}
+      <div style={{ padding: "72px 32px 80px", textAlign: "center" }}>
+        <div style={{ maxWidth: 600, margin: "0 auto" }}>
+          <div style={{ display: "flex", justifyContent: "center", gap: 48,
+            marginBottom: 40, flexWrap: "wrap" }}>
+            {[
+              { value: PROJECTS.length, label: "Projects" },
+              { value: `${YEARS.filter(y => y !== "ON GOING")[0]}–Present`, label: "Timeline" },
+              { value: STRUCTURE_CATEGORIES.length, label: "Structure Types" },
+              { value: Object.keys(LOCATIONS).length, label: "Locations" },
+            ].map(s => (
+              <div key={s.label}>
+                <div style={{ fontFamily: "'Cormorant Garamond', Georgia, serif",
+                  fontSize: 36, fontWeight: 300, color: C.textDark }}>{s.value}</div>
+                <div style={{ fontSize: 9, color: C.textMuted, letterSpacing: "0.2em",
+                  textTransform: "uppercase", marginTop: 4 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ maxWidth: 480, margin: "0 auto 36px" }}>
+            <EditableField value={content.ctaText} onChange={v => updateField("ctaText", v)}
+              placeholderText="A final line inviting the visitor to explore the full documentation"
+              multiline
+              style={{ fontSize: 14, color: C.textMid, lineHeight: 1.7, display: "block", textAlign: "center" }} />
+          </div>
+
+          <button onClick={onEnter} style={{
+            padding: "16px 48px", borderRadius: 10, background: C.bgDark,
+            color: C.textOnDark, border: "none", fontSize: 13, fontWeight: 600,
+            cursor: "pointer", letterSpacing: "0.15em", textTransform: "uppercase",
+            fontFamily: "'DM Sans', sans-serif", transition: "all 0.3s",
+            boxShadow: "0 4px 20px rgba(59,52,37,0.15)",
+          }}
+            onMouseEnter={e => { e.target.style.transform = "translateY(-2px)"; e.target.style.boxShadow = "0 8px 30px rgba(59,52,37,0.25)"; }}
+            onMouseLeave={e => { e.target.style.transform = "translateY(0)"; e.target.style.boxShadow = "0 4px 20px rgba(59,52,37,0.15)"; }}
+          >Start Exploring</button>
+
+          <div style={{ marginTop: 16, maxWidth: 300, margin: "16px auto 0" }}>
+            <EditableField value={content.ctaTagline} onChange={v => updateField("ctaTagline", v)}
+              placeholderText="e.g. 130 bamboo buildings, 20 years of innovation"
+              style={{ fontSize: 11, color: C.textMuted, fontStyle: "italic", display: "block", textAlign: "center" }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── PAGE TRANSITION ─── */
+function PageTransition({ pageKey, children }) {
+  const [displayKey, setDisplayKey] = useState(pageKey);
+  const [animState, setAnimState] = useState("visible");
+  const [content, setContent] = useState(children);
+
+  useEffect(() => {
+    if (pageKey !== displayKey) {
+      // Fade out current
+      setAnimState("exiting");
+      setTimeout(() => {
+        setContent(children);
+        setDisplayKey(pageKey);
+        window.scrollTo({ top: 0, behavior: "instant" });
+        setAnimState("entering");
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => setAnimState("visible"));
+        });
+      }, 350);
+    } else {
+      setContent(children);
+    }
+  }, [pageKey, children]);
+
+  const styles = {
+    visible: { opacity: 1, transform: "translateY(0)", filter: "blur(0px)", transition: "opacity 0.45s cubic-bezier(0.4,0,0.2,1), transform 0.5s cubic-bezier(0.4,0,0.2,1), filter 0.35s ease" },
+    exiting: { opacity: 0, transform: "translateY(-20px)", filter: "blur(6px)", transition: "opacity 0.3s cubic-bezier(0.4,0,0.2,1), transform 0.35s cubic-bezier(0.4,0,0.2,1), filter 0.3s ease" },
+    entering: { opacity: 0, transform: "translateY(24px)", filter: "blur(6px)", transition: "none" },
+  };
+
+  return (
+    <div style={{ willChange: "opacity, transform, filter", ...styles[animState] }}>
+      {content}
+    </div>
+  );
+}
+
+/* ─── SEARCH BAR ─── */
+function GlobalSearch({ onSelect }) {
+  const [query, setQuery] = useState("");
+  const [focused, setFocused] = useState(false);
+  const inputRef = useRef(null);
+
+  // Keyboard shortcut: Cmd+K or Ctrl+K
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+      if (e.key === "Escape") {
+        setQuery("");
+        inputRef.current?.blur();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  const q = query.trim().toLowerCase();
+  const results = q.length < 2 ? [] : PROJECTS.filter(p =>
+    p.name.toLowerCase().includes(q) ||
+    p.year.toLowerCase().includes(q) ||
+    p.classification.toLowerCase().includes(q) ||
+    p.designer.toLowerCase().includes(q) ||
+    (p.location || "").toLowerCase().includes(q)
+  ).slice(0, 8);
+
+  const showDropdown = focused && q.length >= 2;
+
+  return (
+    <div style={{ position: "relative", width: 280 }}>
+      {/* Input */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        background: focused ? C.bgCard : `${C.bgCard}99`,
+        border: `1px solid ${focused ? C.gold : C.border}`,
+        borderRadius: 10, padding: "7px 12px",
+        transition: "all 0.2s",
+        boxShadow: focused ? `0 0 0 3px ${C.gold}22` : "none",
+      }}>
+        <span style={{ fontSize: 14, color: focused ? C.gold : C.textMuted, flexShrink: 0 }}>⌕</span>
+        <input
+          ref={inputRef}
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setTimeout(() => setFocused(false), 180)}
+          placeholder="Search projects…"
+          style={{
+            background: "none", border: "none", outline: "none",
+            fontSize: 12, color: C.textDark, width: "100%",
+            fontFamily: "'DM Sans', sans-serif",
+            "::placeholder": { color: C.textMuted },
+          }}
+        />
+        {query ? (
+          <button onClick={() => setQuery("")} style={{
+            background: "none", border: "none", cursor: "pointer",
+            color: C.textMuted, fontSize: 16, lineHeight: 1, padding: 0, flexShrink: 0,
+          }}>×</button>
+        ) : (
+          <span style={{
+            fontSize: 9, color: C.textMuted, letterSpacing: "0.06em",
+            background: C.bgWarm, border: `1px solid ${C.border}`,
+            borderRadius: 4, padding: "2px 5px", flexShrink: 0, whiteSpace: "nowrap",
+          }}>⌘K</span>
+        )}
+      </div>
+
+      {/* Dropdown results */}
+      {showDropdown && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0,
+          background: C.bgCard, border: `1px solid ${C.border}`,
+          borderRadius: 12, boxShadow: "0 12px 40px rgba(59,52,37,0.16)",
+          zIndex: 999, overflow: "hidden",
+        }}>
+          {results.length === 0 ? (
+            <div style={{ padding: "16px 18px", fontSize: 12, color: C.textMuted,
+              fontStyle: "italic", textAlign: "center" }}>
+              No projects found
+            </div>
+          ) : results.map((p, i) => {
+            const accent = catColor(p.classification);
+            const hi = (txt) => {
+              if (!q) return txt;
+              const idx = txt.toLowerCase().indexOf(q);
+              if (idx === -1) return txt;
+              return <>
+                {txt.slice(0, idx)}
+                <mark style={{ background: `${C.gold}44`, color: C.textDark, borderRadius: 2, padding: "0 1px" }}>
+                  {txt.slice(idx, idx + q.length)}
+                </mark>
+                {txt.slice(idx + q.length)}
+              </>;
+            };
+            return (
+              <div key={i}
+                onMouseDown={() => { onSelect(p); setQuery(""); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  padding: "10px 14px", cursor: "pointer",
+                  borderBottom: i < results.length - 1 ? `1px solid ${C.borderLight}` : "none",
+                  transition: "background 0.15s",
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = C.bgWarm}
+                onMouseLeave={e => e.currentTarget.style.background = "transparent"}
+              >
+                <div style={{ width: 3, alignSelf: "stretch", borderRadius: 2, background: accent, flexShrink: 0 }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 500, color: C.textDark,
+                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {hi(p.name)}
+                  </div>
+                  <div style={{ fontSize: 10, color: C.textMuted, marginTop: 1 }}>
+                    {hi(p.year)} · {hi(classShortLabel(p.classification))} · {hi(p.designer)}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {results.length > 0 && (
+            <div style={{ padding: "7px 14px", fontSize: 10, color: C.textMuted,
+              borderTop: `1px solid ${C.borderLight}`, letterSpacing: "0.08em" }}>
+              {results.length} result{results.length !== 1 ? "s" : ""} · press Esc to close
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ─── APP ─── */
+function App() {
+  const [page, setPage] = useState("landing");
+  const [view, setView] = useState("map");
+  const [selectedProject, setSelectedProject] = useState(null);
+  const [viewKey, setViewKey] = useState(0);
+
+  const handleViewChange = (v) => { if (v !== view) { setView(v); setViewKey(k => k + 1); } };
+
+  const dirMap = { map: 0, roadmap: 1, structure: 2, designer: 3 };
+  const getDir = (v) => dirMap[v] < dirMap[view] ? "left" : "right";
+
+  const pageContent = page === "landing" ? (
+    <LandingPage onEnter={() => setPage("docs")} />
+  ) : page === "docs" ? (
+    <>
+      <div style={{ textAlign: "center", padding: "52px 32px 12px" }}>
+        <h1 style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 48,
+          fontWeight: 300, color: C.textDark, margin: 0, letterSpacing: "0.06em", lineHeight: 1 }}>
+          BAMBOO BUILDING
+        </h1>
+        <p style={{ fontFamily: "'Cormorant Garamond', Georgia, serif", fontSize: 28,
+          fontWeight: 300, fontStyle: "italic", color: C.gold, margin: "4px 0 0" }}>
+          Classification & Roadmap
+        </p>
+        <div style={{ width: 50, height: 1,
+          background: `linear-gradient(90deg, transparent, ${C.gold}, transparent)`,
+          margin: "20px auto 0" }} />
+      </div>
+
+      <StatsBar />
+      <ViewToggle view={view} setView={handleViewChange} />
+
+      <div style={{ position: "relative", minHeight: 400 }}>
+        <AnimatedView isVisible={view === "roadmap"} direction={getDir("roadmap")}>
+          <RoadmapView key={`r-${viewKey}`} onSelect={setSelectedProject} />
+        </AnimatedView>
+        <AnimatedView isVisible={view === "structure"} direction={getDir("structure")}>
+          <StructureView key={`s-${viewKey}`} onSelect={setSelectedProject} />
+        </AnimatedView>
+        <AnimatedView isVisible={view === "designer"} direction={getDir("designer")}>
+          <DesignerView key={`d-${viewKey}`} onSelect={setSelectedProject} />
+        </AnimatedView>
+        <AnimatedView isVisible={view === "map"} direction={getDir("map")}>
+          <MapView key={`m-${viewKey}`} onSelect={setSelectedProject} />
+        </AnimatedView>
+      </div>
+
+      {selectedProject && <ProjectDetail project={selectedProject} onClose={() => setSelectedProject(null)} />}
+    </>
+  ) : (
+    <div style={{ paddingTop: 48 }}>
+      <ContributePage onBack={() => setPage("docs")} />
+    </div>
+  );
+
+  return (
+    <div style={{ fontFamily: "'DM Sans', sans-serif", background: C.bg,
+      minHeight: "100vh", color: C.textDark, overflowX: "hidden" }}>
+      <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+      {/* Top bar with navigation */}
+      <div style={{ background: C.bgDark, padding: "0 32px",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        position: "sticky", top: 0, zIndex: 100,
+      }}>
+        <button onClick={() => setPage("landing")} style={{
+          fontSize: 16, fontWeight: 700, color: C.textOnDark, letterSpacing: "0.2em",
+          background: "none", border: "none", cursor: "pointer", padding: "14px 0",
+          fontFamily: "'DM Sans', sans-serif",
+        }}>IBUKU</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+          {[
+            { key: "landing", label: "Home" },
+            { key: "docs", label: "Documentation" },
+            { key: "contribute", label: "Contribute" },
+          ].map(p => (
+            <button key={p.key} onClick={() => setPage(p.key)}
+              style={{
+                padding: "16px 20px", border: "none", background: "transparent",
+                color: page === p.key ? C.gold : `${C.textOnDark}88`,
+                fontSize: 11, fontWeight: 600, cursor: "pointer",
+                letterSpacing: "0.12em", textTransform: "uppercase",
+                fontFamily: "'DM Sans', sans-serif",
+                borderBottom: page === p.key ? `2px solid ${C.gold}` : "2px solid transparent",
+                transition: "all 0.25s",
+              }}>{p.label}</button>
+          ))}
+          <div style={{ marginLeft: 16 }}>
+            <GlobalSearch onSelect={(p) => { setPage("docs"); setSelectedProject(p); }} />
+          </div>
+        </div>
+      </div>
+
+      <PageTransition pageKey={page}>
+        {pageContent}
+      </PageTransition>
+
+      <div style={{ textAlign: "center", padding: "36px 32px", fontSize: 10, color: C.textMuted,
+        borderTop: `1px solid ${C.borderLight}`, letterSpacing: "0.12em", textTransform: "uppercase" }}>
+        IBUKU · {PROJECTS.length} Projects · 2005–Present
+      </div>
+    </div>
+  );
+}
+
+
+    // Mount the app
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
